@@ -1,8 +1,5 @@
 # Name: Gerard Zhou
-# Adapted from the instructor's sender to send one flight per second.
-
-"""Run with: python send_flights_data_from_file.py flights_data_small.csv"""
-
+import bz2
 import csv
 import socket
 import sys
@@ -15,8 +12,9 @@ INTERVAL_SECONDS = 1.0
 
 
 def main(filename):
-    # utf-8-sig also accepts files with a UTF-8 byte-order mark.
-    with open(filename, "r", encoding="utf-8-sig", newline="") as source:
+    # decompress bz2 csv file
+    open_file = bz2.open if filename.lower().endswith(".bz2") else open
+    with open_file(filename, "rt", encoding="utf-8-sig", newline="") as source:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
             server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             server.bind((HOST, PORT))
@@ -33,10 +31,8 @@ def main(filename):
                         continue
                     row = next(csv.reader([line]))
                     if len(row) > 4 and row[4].strip().upper() == "AIRLINE":
-                        continue  # The CSV header is not a flight.
+                        continue  # The CSV header isn't a flight
 
-                    # Ensure a terminating newline, including for the final row.
-                    # sendall sends the complete row even if TCP writes are partial.
                     message = line.rstrip("\r\n") + "\n"
                     connection.sendall(message.encode("utf-8"))
                     count += 1
@@ -46,15 +42,15 @@ def main(filename):
 
                 print(f"Finished sending {count} flights. Press Ctrl+C to stop.",
                       flush=True)
-                # Keep the socket open while Spark processes the last window.
-                # With no new data, the window becomes empty after 60 seconds.
+                # keeps socket open while Spark processes the last window
+                # With no new data, window becomes empty after 60 sec
                 while True:
                     time.sleep(1)
 
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print("Usage: python send_flights_data_from_file.py <csv_file>",
+        print("Usage: python send_flights_data_from_file.py <csv_or_csv.bz2>",
               file=sys.stderr)
         sys.exit(1)
     try:
@@ -63,3 +59,4 @@ if __name__ == "__main__":
         print("\nSender stopped.")
     except (BrokenPipeError, ConnectionResetError):
         print("Spark disconnected. Sender stopped.")
+
