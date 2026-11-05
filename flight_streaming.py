@@ -1,4 +1,13 @@
 # Name: Gerard Zhou
+# Spark Streaming assignment: flight counts, cancellations, and cancellation rates.
+
+"""Run with: spark-submit --master local[2] flight_streaming.py
+
+Start send_flights_data_from_file.py in another terminal first.
+The window uses arrival time, not the historical dates in the CSV.
+Every 5 seconds, each task prints its top 10 airlines (winner first),
+followed by its last 10 window winners, oldest first.
+"""
 
 import csv
 from collections import deque
@@ -18,16 +27,18 @@ DISPLAY_LIMIT = 10
 def parse_flight(line):
     """Return [(airline, (total, cancelled))], or [] for a header/bad row."""
     try:
+        # csv.reader handles quoted fields and empty columns correctly.
         row = next(csv.reader([line], strict=True))
         if len(row) < 25:
             return []
 
+        # Column positions are zero-based in the supplied flights schema.
         airline = row[4].strip().upper() # AIRLINE
         cancellation = row[24].strip() # CANCELLED
         if not airline or airline == "AIRLINE":
             return []
 
-        # Accept both int and decimal flags
+        # Accept both integer flags (0/1) and decimal flags (0.0/1.0).
         cancelled = float(cancellation)
         if cancelled not in (0.0, 1.0):
             return []
@@ -49,7 +60,8 @@ def make_printer(title, percentage=False, cancellations=False):
         return f"{value:.2f}%" if percentage else str(value)
 
     def print_results(batch_time, rdd):
-        # Rank with an RDD action, ties resolved by airline code
+            # Rank with an RDD action. Ties are resolved by airline code.
+        # Only the top 10 aggregated rows are brought to the driver.
         top = rdd.takeOrdered(
             DISPLAY_LIMIT, key=lambda item: (-item[1], item[0])
         )
@@ -81,6 +93,7 @@ def main():
     print(f"Starting flight streaming: {__file__}", flush=True)
 
     conf = SparkConf().setAppName("FlightStreaming")
+    # The socket receiver needs one thread; processing needs another.
     conf.setIfMissing("spark.master", "local[2]")
     conf.set("spark.ui.showConsoleProgress", "false")
 
